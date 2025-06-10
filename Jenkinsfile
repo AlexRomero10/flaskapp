@@ -35,7 +35,7 @@ pipeline {
             stages {
                 stage('CloneAnfitrion') {
                     steps {
-                        git branch:'master', url:'https://github.com/AlexRomero10/flaskapp.git'
+                        git branch:'main', url:'https://github.com/AlexRomero10/flaskapp.git'
                     }
                 }
                 stage('BuildImage') {
