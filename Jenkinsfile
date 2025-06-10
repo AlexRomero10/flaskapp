@@ -1,7 +1,7 @@
 pipeline {
     environment {
-        IMAGEN = "aleromero10/flask-app" 
-        LOGIN = 'USER_DOCKERHUB'
+        IMAGEN = "aleromero10/flask-app"
+        DOCKERHUB_CREDENTIALS = credentials('USER_DOCKERHUB')  // Aquí pones el ID de la credencial de Jenkins
     }
     agent none
     stages {
@@ -41,14 +41,14 @@ pipeline {
                 stage('BuildImage') {
                     steps {
                         script {
-                            newApp = docker.build "$IMAGEN:latest" 
+                            newApp = docker.build("$IMAGEN:latest")
                         }
                     }
                 }
                 stage('UploadImage') {
                     steps {
                         script {
-                            docker.withRegistry('', LOGIN) {
+                            docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
                                 newApp.push()
                             }
                         }
@@ -56,7 +56,7 @@ pipeline {
                 }
                 stage('RemoveImage') {
                     steps {
-                        sh "docker rmi $IMAGEN:latest" 
+                        sh "docker rmi $IMAGEN:latest"
                     }
                 }
                 stage ('Despliegue') {
@@ -85,7 +85,7 @@ pipeline {
         always {
             mail to: 'aletromp00@gmail.com',
             subject: "Status of pipeline: ${currentBuild.fullDisplayName}",
-            body: "${env.BUILD_URL} has result ${currentBuild.result}" 
+            body: "${env.BUILD_URL} has result ${currentBuild.result}"
         }
     }
 }
