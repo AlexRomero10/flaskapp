@@ -15,7 +15,13 @@ pipeline {
             stages {
                 stage('Clone') {
                     steps {
-                        git branch:'main', url:'https://github.com/AlexRomero10/flask-app.git'
+                        checkout([$class: 'GitSCM', 
+                            branches: [[name: 'main']], 
+                            userRemoteConfigs: [[
+                                url: 'git@github.com:AlexRomero10/flask-app.git', 
+                                credentialsId: 'SSH_USER'
+                            ]]
+                        ])
                     }
                 }
                 stage('Install') {
@@ -35,7 +41,13 @@ pipeline {
             stages {
                 stage('CloneAnfitrion') {
                     steps {
-                        git branch:'main', url:'https://github.com/AlexRomero10/flask-app.git'
+                        checkout([$class: 'GitSCM', 
+                            branches: [[name: 'main']], 
+                            userRemoteConfigs: [[
+                                url: 'git@github.com:AlexRomero10/flask-app.git', 
+                                credentialsId: 'SSH_USER'
+                            ]]
+                        ])
                     }
                 }
                 stage('BuildImage') {
@@ -61,10 +73,10 @@ pipeline {
                 }
                 stage ('Deploy') {
                     steps {
-                        sshagent(credentials: ['SSH_USER']) {
+                        sshagent(['SSH_USER']) {
                             sh '''
                             ssh -o StrictHostKeyChecking=no alejandro@art.alejandroromero.cat << EOF
-                            cd flask-app || git clone https://github.com/AlexRomero10/flask-app.git && cd flask-app
+                            cd flask-app || git clone git@github.com:AlexRomero10/flask-app.git && cd flask-app
                             git pull
                             export NOMBRE="Alejandro"
                             docker-compose up -d --build
