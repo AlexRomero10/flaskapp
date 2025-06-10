@@ -43,7 +43,7 @@ pipeline {
                 stage('Deploy') {
                     steps {
                         script {
-                            docker.withRegistry('', USER_DOCKERHUB) {
+                            docker.withRegistry('', USUARIO) {
                                 newApp.push()               // Push con tag $BUILD_NUMBER
                                 newApp.push("latest")       // Push con tag latest
                             }
