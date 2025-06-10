@@ -1,91 +1,99 @@
 pipeline {
-    environment {
-        IMAGEN = "aleromero10/flask-app"
-        DOCKERHUB_CREDENTIALS = credentials('USER_DOCKERHUB')  // Aquí pones el ID de la credencial de Jenkins
-    }
     agent none
+
+    environment {
+        IMAGE_NAME = "flask-app"  // Nombre de la imagen de Docker
+        VPS_USER = "alejandro"  // Usuario del VPS
+        VPS_HOST = "217.160.22.156"  // IP del VPS
+        PROJECT_PATH = "/home/alejandro/app"  // Ruta donde está docker-compose en el VPS
+        REPO_URL = "https://github.com/AlexRomero10/flaskapp"  // URL del repositorio
+    }
+
     stages {
-        stage("Desarrollo") {
+        stage('Clone Repository') {
+            agent any
+            steps {
+                git branch: 'main', url: "${REPO_URL}" 
+            }
+        }
+
+        stage('Install Dependencies') {
             agent {
-                docker { 
-                    image "python:3" 
+                docker {
+                    image 'python:3.9-alpine'
                     args '-u root:root'
                 }
             }
-            stages {
-                stage('Clone') {
-                    steps {
-                        git branch:'main', url:'https://github.com/AlexRomero10/flaskapp.git'
-                    }
+            steps {
+                sh '''
+                    pip install --upgrade pip
+                    ls -la app  # Verificar que requirements.txt está presente
+                    pip install -r app/requirements.txt  # Cambiar la ruta de requirements.txt
+                '''
+            }
+        }
+
+        stage('Run Tests') {
+            agent {
+                docker {
+                    image 'python:3.9-alpine'
+                    args '-u root:root'
                 }
-                stage('Install') {
-                    steps {
-                        sh 'pip install -r app/requirements.txt'
-                    }
-                }
-                stage('Test') {
-                    steps {
-                        sh 'pytest app/test_app.py'
+            }
+            steps {
+                sh '''
+                    pip install --upgrade pip
+                    ls -la app  # Verificar que test_app.py está presente
+                    pip install -r app/requirements.txt  # Cambiar la ruta de requirements.txt
+                    pytest app/test_app.py  # Apuntar al archivo de prueba correcto
+                '''
+            }
+        }
+
+        stage('Build and Push Docker Image') {
+            agent any
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_HUB_USER', passwordVariable: 'DOCKER_HUB_PASSWORD')]) {
+                        sh '''
+                            docker build -t $IMAGE_NAME .
+                            echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
+                            docker tag $IMAGE_NAME $DOCKER_HUB_USER/$IMAGE_NAME:latest
+                            docker push $DOCKER_HUB_USER/$IMAGE_NAME:latest
+                            docker rmi $IMAGE_NAME
+                        '''
                     }
                 }
             }
         }
-        stage("Construcción") {
+
+        stage('Deploy to VPS') {
             agent any
-            stages {
-                stage('CloneAnfitrion') {
-                    steps {
-                        git branch:'main', url:'https://github.com/AlexRomero10/flaskapp.git'
-                    }
-                }
-                stage('BuildImage') {
-                    steps {
-                        script {
-                            newApp = docker.build("$IMAGEN:latest")
-                        }
-                    }
-                }
-                stage('UploadImage') {
-                    steps {
-                        script {
-                            docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
-                                newApp.push()
-                            }
-                        }
-                    }
-                }
-                stage('RemoveImage') {
-                    steps {
-                        sh "docker rmi $IMAGEN:latest"
-                    }
-                }
-                stage ('Despliegue') {
-                    agent any
-                    stages {
-                        stage ('Despliegue en el VPS'){
-                            steps {
-                                sshagent(credentials : ['SSH_USER']) {
-                                    sh '''ssh -o StrictHostKeyChecking=no alejandro@art.alejandroromero.cat " 
-                                    cd flaskapp &&
-                                    git pull &&
-                                    docker-compose down &&
-                                    docker pull aleromero10/flask-app:latest &&
-                                    docker-compose up -d &&
-                                    docker image prune -f
-                                    "'''
-                                }
-                            }
-                        }
+            steps {
+                script {
+                    withCredentials([sshUserPrivateKey(credentialsId: 'vps-ssh-credentials', keyFileVariable: 'SSH_KEY')]) {
+                        sh '''
+                            echo "Conectando al VPS..." 
+                            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST << EOF
+                                echo "Desplegando en el VPS..." 
+                                cd $PROJECT_PATH
+                                docker-compose down
+                                docker pull $DOCKER_HUB_USER/$IMAGE_NAME:latest
+                                docker-compose up -d --build
+                                echo "Despliegue finalizado correctamente." 
+EOF
+                        '''
                     }
                 }
             }
         }
     }
+
     post {
         always {
             mail to: 'aletromp00@gmail.com',
-            subject: "Status of pipeline: ${currentBuild.fullDisplayName}",
-            body: "${env.BUILD_URL} has result ${currentBuild.result}"
+                 subject: "Pipeline Finalizado",
+                 body: "El pipeline de Jenkins ha finalizado. La imagen generada es: $IMAGE_NAME. Revisa los logs para más detalles." 
         }
     }
 }
