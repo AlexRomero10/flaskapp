@@ -1,21 +1,21 @@
 pipeline {
     environment {
-        IMAGEN = "aleromero10/flask-app"   // Sin :latest aquí
-        USUARIO = 'aleromero10'
+        IMAGEN = "aleromero10/flask-app" 
+        LOGIN = 'USER_DOCKERHUB'
     }
     agent none
     stages {
-        stage("test the project") {
+        stage("Desarrollo") {
             agent {
-                docker {
-                    image "python:3"
+                docker { 
+                    image "python:3" 
                     args '-u root:root'
                 }
             }
             stages {
                 stage('Clone') {
                     steps {
-                        git branch:'main',url:'https://github.com/AlexRomero10/flaskapp.git'
+                        git branch:'main', url:'https://github.com/AlexRomero10/flask-app.git'
                     }
                 }
                 stage('Install') {
@@ -25,52 +25,50 @@ pipeline {
                 }
                 stage('Test') {
                     steps {
-                        sh 'cd app && pytest test_app.py'
+                        sh 'pytest app/test_app.py'
                     }
                 }
             }
         }
-        stage('Creación de la imagen') {
+        stage("Construccion") {
             agent any
             stages {
-                stage('Build') {
+                stage('CloneAnfitrion') {
+                    steps {
+                        git branch:'main', url:'https://github.com/AlexRomero10/flask-app.git'
+                    }
+                }
+                stage('BuildImage') {
                     steps {
                         script {
-                            newApp = docker.build("$IMAGEN:$BUILD_NUMBER")
+                            newApp = docker.build "$IMAGEN:latest"
                         }
                     }
                 }
-                stage('Deploy') {
+                stage('UploadImage') {
                     steps {
                         script {
-                            docker.withRegistry('', 'aleromero10') {
-                                newApp.push()               // Push con tag $BUILD_NUMBER
-                                newApp.push("latest")       // Push con tag latest
+                            docker.withRegistry('', LOGIN) {
+                                newApp.push()
                             }
                         }
                     }
                 }
-                stage('Clean Up') {
+                stage('RemoveImage') {
                     steps {
-                        sh "docker rmi $IMAGEN:$BUILD_NUMBER"
-                        sh "docker rmi $IMAGEN:latest"    // Limpia también latest para no acumular
+                        sh "docker rmi $IMAGEN:latest"
                     }
                 }
-            }
-        }
-        stage('Despliegue') {
-            agent any
-            stages {
-                stage('Despliegue flaskapp') {
+                stage ('Deploy') {
                     steps {
-                        sshagent(credentials: ['SSH_KEY']) {
+                        sshagent(credentials: ['SSH_USER']) {
                             sh '''
-                                ssh -o StrictHostKeyChecking=no alejandro@art.alejandroromero.cat "
-                                cd flaskapp && \
-                                git pull && \
-                                docker-compose down -v && \
-                                docker pull aleromero10/flask-app:latest && \
-                                docker-compose up -d"
+                            ssh -o StrictHostKeyChecking=no alejandro@art.alejandroromero.cat << EOF
+                            cd flask-app || git clone https://github.com/AlexRomero10/flask-app.git && cd flask-app
+                            git pull
+                            export NOMBRE="Alejandro"
+                            docker-compose up -d --build
+                            EOF
                             '''
                         }
                     }
@@ -81,8 +79,8 @@ pipeline {
     post {
         always {
             mail to: 'aletromp00@gmail.com',
-                 subject: "Estado del pipeline: ${currentBuild.fullDisplayName}",
-                 body: "El despliegue ${env.BUILD_URL} ha tenido como resultado: ${currentBuild.result}"
+            subject: "Status of pipeline: ${currentBuild.fullDisplayName}",
+            body: "${env.BUILD_URL} has result ${currentBuild.result}" 
         }
     }
 }
